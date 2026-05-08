@@ -1,8 +1,12 @@
 import { eq, and } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
-import type { SourceAdapter, CaseListItem } from "./types.js";
+import type { SourceAdapter, CaseListItem, CaseDetail } from "./types.js";
+import {
+  sendNewCaseNotification,
+  sendTrackedCaseUpdateNotification,
+} from "../notifications/emailService.js";
 
-const { sources, cases, scrapeRuns } = schema;
+const { sources, cases, scrapeRuns, userFlags } = schema;
 
 export async function runScrape(
   adapter: SourceAdapter,
@@ -39,44 +43,113 @@ export async function runScrape(
     const allListItems = await adapter.listCases();
     console.log(`[scraper] Found ${allListItems.length} cases on listing`);
 
-    // ── Get existing external IDs ──────────────────────
-    const existingCases = await db
-      .select({ externalId: cases.externalId })
+    // ── Get existing cases and tracked status ──────────
+    const dbCases = await db
+      .select({
+        id: cases.id,
+        externalId: cases.externalId,
+        title: cases.title,
+        status: cases.status,
+        deadline: cases.deadline,
+        settlementAmount: cases.settlementAmount,
+        flag: userFlags.flag,
+      })
       .from(cases)
+      .leftJoin(userFlags, eq(cases.id, userFlags.caseId))
       .where(eq(cases.sourceId, source.id));
-    const existingIds = new Set(existingCases.map((c) => c.externalId));
 
-    // ── Filter to new cases only (incremental) ─────────
-    const newItems = allListItems.filter(
-      (item) => !existingIds.has(item.externalId),
+    const existingIds = new Set(dbCases.map((c) => c.externalId));
+    const trackedCasesMap = new Map(
+      dbCases
+        .filter((c) => c.flag === "yes" || c.flag === "unsure")
+        .map((c) => [c.externalId, c]),
     );
-    console.log(`[scraper] ${newItems.length} new cases to process`);
 
     let processedCount = 0;
 
-    for (const item of newItems) {
+    // ── Process all list items ─────────────────────────
+    for (const item of allListItems) {
       try {
-        console.log(`[scraper] Processing: ${item.title}`);
+        const isNew = !existingIds.has(item.externalId);
+        const tracked = trackedCasesMap.get(item.externalId);
+
+        if (!isNew && !tracked) continue;
+
+        console.log(
+          `[scraper] Processing ${isNew ? "new" : "tracked"} case: ${item.title}`,
+        );
         const detail = await adapter.getCaseDetail(item.url);
 
-        await db.insert(cases).values({
-          sourceId: source.id,
-          externalId: item.externalId,
-          title: detail.title || item.title,
-          summary: item.snippet,
-          description: detail.description,
-          classDefinition: detail.classDefinition,
-          status: detail.status,
-          settlementAmount: detail.settlementAmount,
-          courtFileNumber: detail.courtFileNumber,
-          detailUrl: item.url,
-          deadline: detail.deadline,
-          rawHtml: detail.rawHtml,
-          aiAnalysis: detail as any,
-        });
+        if (isNew) {
+          const [inserted] = await db
+            .insert(cases)
+            .values({
+              sourceId: source.id,
+              externalId: item.externalId,
+              title: detail.title || item.title,
+              summary: item.snippet,
+              description: detail.description,
+              classDefinition: detail.classDefinition,
+              status: detail.status,
+              settlementAmount: detail.settlementAmount,
+              courtFileNumber: detail.courtFileNumber,
+              detailUrl: item.url,
+              deadline: detail.deadline,
+              rawHtml: detail.rawHtml,
+              aiAnalysis: detail as any,
+              lastNotifiedAt: new Date(),
+            })
+            .returning();
 
-        processedCount++;
-        console.log(`[scraper] ✓ Saved: ${item.title}`);
+          processedCount++;
+          console.log(`[scraper] ✓ Saved: ${item.title}`);
+
+          await sendNewCaseNotification({
+            title: inserted.title,
+            status: inserted.status,
+            settlementAmount: inserted.settlementAmount,
+            deadline: inserted.deadline,
+            detailUrl: inserted.detailUrl,
+          });
+        } else if (tracked) {
+          const changes: string[] = [];
+          if (detail.status !== tracked.status)
+            changes.push(`Status changed from "${tracked.status}" to "${detail.status}"`);
+          if (detail.deadline !== tracked.deadline)
+            changes.push(`Deadline changed from "${tracked.deadline}" to "${detail.deadline}"`);
+          if (detail.settlementAmount !== tracked.settlementAmount)
+            changes.push(
+              `Settlement Amount changed from "${tracked.settlementAmount}" to "${detail.settlementAmount}"`,
+            );
+
+          if (changes.length > 0) {
+            console.log(`[scraper] ⚠ Detected changes for tracked case: ${item.title}`);
+            await db
+              .update(cases)
+              .set({
+                status: detail.status,
+                deadline: detail.deadline,
+                settlementAmount: detail.settlementAmount,
+                description: detail.description,
+                classDefinition: detail.classDefinition,
+                rawHtml: detail.rawHtml,
+                aiAnalysis: detail as any,
+                lastNotifiedAt: new Date(),
+              })
+              .where(eq(cases.id, tracked.id));
+
+            await sendTrackedCaseUpdateNotification(
+              {
+                title: tracked.title,
+                status: detail.status,
+                settlementAmount: detail.settlementAmount,
+                deadline: detail.deadline,
+                detailUrl: item.url,
+              },
+              changes,
+            );
+          }
+        }
 
         // Small delay between requests to be polite
         await sleep(2000);

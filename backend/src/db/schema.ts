@@ -45,6 +45,7 @@ export const cases = pgTable("cases", {
   deadline: text("deadline"),
   rawHtml: text("raw_html"), // preserved for re-analysis
   aiAnalysis: jsonb("ai_analysis"), // full structured AI output
+  lastNotifiedAt: timestamp("last_notified_at"),
   scrapedAt: timestamp("scraped_at").defaultNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
