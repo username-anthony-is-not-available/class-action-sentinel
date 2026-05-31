@@ -17,7 +17,7 @@
     "express": "^5.2.1",
     "node-cron": "^4.2.1",
     "nodemailer": "^8.0.10",
-    "openai": "^6.39.0",
+    "openai": "^6.39.1",
     "pg": "^8.21.0",
     "puppeteer": "^25.0.4"
   },
