@@ -59,7 +59,8 @@ programmatic checks.
 
 ## Adding a New Source
 
-For a detailed guide on implementing new sources, see the
+For a detailed guide on the scraper's internal architecture, the
+`SourceAdapter` interface, and best practices for implementation, see the
 [Scraper Architecture documentation](docs/scraper-architecture.md).
 
 1. Create `backend/src/scraper/adapters/mysite.ts`
