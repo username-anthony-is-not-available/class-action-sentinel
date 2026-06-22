@@ -9,9 +9,11 @@ Ensuring high-quality code is essential for the maintainability and reliability
 of the system.
 
 - **Linting**: All code must pass linting without errors. We use project-specific
-  linters (e.g., `eslint` for JavaScript/TypeScript, `markdownlint` for
-  Markdown).
-- **Formatting**: Consistent code formatting must be maintained using tools like
+  linters:
+  - **Backend**: `eslint`
+  - **Frontend**: `next lint` (ESLint with Next.js configuration)
+  - **Documentation**: `markdownlint` (using `npx markdownlint-cli`)
+- **Formatting**: Consistent code formatting must be maintained using
   `prettier`.
 - **Documentation**: All complex logic must be documented with clear comments.
   Public APIs must have comprehensive documentation.
@@ -24,7 +26,7 @@ A robust testing suite is required to ensure system stability and prevent
 regressions.
 
 - **Unit Tests**: Mandatory for all new features and bug fixes. Aim for high
-  coverage of core logic.
+  coverage of core logic. We use `vitest` for backend testing.
 - **Integration Tests**: Required for components that interact with external
   services or other system parts.
 - **E2E Tests**: Should be implemented for critical user paths to ensure the
