@@ -16,7 +16,19 @@ Agents should focus on tasks that advance the functional aspects of the
   send alerts based on predefined criteria.
 - **Case Tracking**: Building tools to track the progress of class-action cases.
 - **Documentation**: Maintaining and updating project documentation, including
-  `README.md`, `GOAL.md`, and `STANDARDS.md`.
+  `README.md`, `GOAL.md`, `STANDARDS.md`, and `BACKLOG.md`.
+
+## Task Execution
+
+Jules (and other agents) are responsible for monitoring and executing tasks
+defined in `BACKLOG.md`.
+
+- **Monitoring**: Regularly check `BACKLOG.md` for uncompleted tasks within the
+  current milestone.
+- **Execution**: When picking up a task, ensure it aligns with the vision in
+  `GOAL.md` and meets the thresholds in `STANDARDS.md`.
+- **Updating**: Upon completion of a task, update `BACKLOG.md` to reflect its
+  status (e.g., mark as completed with `[x]`).
 
 ## General Instructions
 
