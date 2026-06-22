@@ -59,6 +59,9 @@ programmatic checks.
 
 ## Adding a New Source
 
+For a detailed guide on implementing new sources, see the
+[Scraper Architecture documentation](docs/scraper-architecture.md).
+
 1. Create `backend/src/scraper/adapters/mysite.ts`
 2. Implement the `SourceAdapter` interface (`listCases`, `getCaseDetail`,
    `cleanup`)
