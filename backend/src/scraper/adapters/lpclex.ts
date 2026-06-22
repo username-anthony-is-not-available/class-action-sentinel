@@ -1,36 +1,58 @@
-import puppeteer, { type Browser } from "puppeteer";
+import { chromium } from "playwright-extra";
+import stealthPlugin from "puppeteer-extra-plugin-stealth";
+import type { Browser, BrowserContext } from "playwright";
 import type { SourceAdapter, CaseListItem, CaseDetail } from "../types.js";
 import { analyzeCasePage } from "../aiAnalyzer.js";
 
 const BASE_URL = "https://lpclex.com";
 const SETTLEMENTS_URL = `${BASE_URL}/settlements/`;
 
+// Add stealth plugin to playwright-extra
+chromium.use(stealthPlugin());
+
 export class LPCLexAdapter implements SourceAdapter {
   key = "lpclex";
   private browser: Browser | null = null;
+  private context: BrowserContext | null = null;
+  private proxy: { server: string; username?: string; password?: string } | null =
+    null;
 
   private async getBrowser(): Promise<Browser> {
     if (!this.browser) {
-      this.browser = await puppeteer.launch({
+      this.browser = await chromium.launch({
         headless: true,
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-dev-shm-usage",
-          "--disable-gpu",
-        ],
       });
     }
     return this.browser;
   }
 
+  private async getContext(): Promise<BrowserContext> {
+    if (!this.context) {
+      const browser = await this.getBrowser();
+      this.context = await browser.newContext({
+        proxy: this.proxy || undefined,
+        userAgent:
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+      });
+    }
+    return this.context;
+  }
+
+  setProxy(proxy: {
+    server: string;
+    username?: string;
+    password?: string;
+  }): void {
+    this.proxy = proxy;
+  }
+
   async listCases(): Promise<CaseListItem[]> {
-    const browser = await this.getBrowser();
-    const page = await browser.newPage();
+    const context = await this.getContext();
+    const page = await context.newPage();
 
     try {
       await page.goto(SETTLEMENTS_URL, {
-        waitUntil: "networkidle2",
+        waitUntil: "networkidle",
         timeout: 30000,
       });
 
@@ -75,12 +97,20 @@ export class LPCLexAdapter implements SourceAdapter {
     }
   }
 
-  async getCaseDetail(url: string): Promise<CaseDetail> {
-    const browser = await this.getBrowser();
-    const page = await browser.newPage();
+  async getCaseDetail(
+    url: string,
+  ): Promise<{ detail: CaseDetail; statusCode: number; duration: number }> {
+    const context = await this.getContext();
+    const page = await context.newPage();
 
+    const start = Date.now();
     try {
-      await page.goto(url, { waitUntil: "networkidle2", timeout: 30000 });
+      const response = await page.goto(url, {
+        waitUntil: "networkidle",
+        timeout: 30000,
+      });
+      const duration = Date.now() - start;
+      const statusCode = response?.status() || 0;
 
       // Extract the main content text and HTML
       const { textContent, htmlContent } = await page.evaluate(() => {
@@ -98,13 +128,17 @@ export class LPCLexAdapter implements SourceAdapter {
       const detail = await analyzeCasePage(textContent);
       detail.rawHtml = htmlContent;
 
-      return detail;
+      return { detail, statusCode, duration };
     } finally {
       await page.close();
     }
   }
 
   async cleanup(): Promise<void> {
+    if (this.context) {
+      await this.context.close();
+      this.context = null;
+    }
     if (this.browser) {
       await this.browser.close();
       this.browser = null;

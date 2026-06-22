@@ -31,8 +31,17 @@ export interface SourceAdapter {
   listCases(): Promise<CaseListItem[]>;
 
   /** Fetch and parse a single case detail page */
-  getCaseDetail(url: string): Promise<CaseDetail>;
+  getCaseDetail(
+    url: string,
+  ): Promise<{ detail: CaseDetail; statusCode: number; duration: number }>;
 
   /** Clean up resources (e.g., close browser) */
   cleanup(): Promise<void>;
+
+  /** Set proxy configuration for the adapter */
+  setProxy?(proxy: {
+    server: string;
+    username?: string;
+    password?: string;
+  }): void;
 }
