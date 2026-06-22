@@ -16,7 +16,8 @@ Agents should focus on tasks that advance the functional aspects of the
   send alerts based on predefined criteria.
 - **Case Tracking**: Building tools to track the progress of class-action cases.
 - **Documentation**: Maintaining and updating project documentation, including
-  `README.md`, `GOAL.md`, `STANDARDS.md`, and `BACKLOG.md`.
+  `README.md`, `GOAL.md`, `STANDARDS.md`, `BACKLOG.md`, and
+  `docs/scraper-architecture.md`.
 
 ## Task Execution
 
