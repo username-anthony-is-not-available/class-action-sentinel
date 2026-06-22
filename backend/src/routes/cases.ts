@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, desc, ilike, or, sql, count } from "drizzle-orm";
+import { eq, count, desc, or, ilike } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 
 const { cases, userFlags } = schema;
@@ -8,7 +8,7 @@ const router = Router();
 // ── GET /api/cases ─────────────────────────────────────
 router.get("/", async (req, res) => {
   try {
-    const { search, flag, page = "1", limit = "20" } = req.query;
+    const { search, page = "1", limit = "20" } = req.query;
     const offset = (Number(page) - 1) * Number(limit);
 
     let query = db

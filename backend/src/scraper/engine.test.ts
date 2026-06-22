@@ -79,7 +79,7 @@ describe("engine - runScrape", () => {
     };
   });
 
-  it("should successfully run scrape for new cases", async () => {
+  const setupBaseMocks = () => {
     const mockSourceSelect = {
       from: vi.fn().mockReturnThis(),
       where: vi.fn().mockResolvedValue([{ id: 1, adapterKey: "test-adapter", name: "test-adapter" }]),
@@ -119,7 +119,10 @@ describe("engine - runScrape", () => {
       where: vi.fn().mockResolvedValue([]),
     };
     vi.mocked(db.update).mockReturnValue(mockUpdate as any);
+  };
 
+  it("should successfully run scrape for new cases", async () => {
+    setupBaseMocks();
     const result = await runScrape(mockAdapter);
 
     expect(result).toEqual({ runId: 10, newCases: 2 });
@@ -127,6 +130,38 @@ describe("engine - runScrape", () => {
     expect(mockAdapter.getCaseDetail).toHaveBeenCalledTimes(2);
     expect(sendNewCaseNotification).toHaveBeenCalledTimes(2);
     expect(mockAdapter.cleanup).toHaveBeenCalled();
+  });
+
+  it("should insert source if it doesn't exist", async () => {
+    vi.mocked(db.select).mockReturnValueOnce({
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue([]), // Source not found
+    } as any);
+
+    const mockSourceInsert = {
+      values: vi.fn().mockReturnThis(),
+      returning: vi.fn().mockResolvedValue([{ id: 1, adapterKey: "test-adapter" }]),
+    };
+    vi.mocked(db.insert).mockReturnValueOnce(mockSourceInsert as any);
+
+    // Continue with regular flow
+    vi.mocked(db.insert).mockReturnValueOnce({
+      values: vi.fn().mockReturnThis(),
+      returning: vi.fn().mockResolvedValue([{ id: 10 }]),
+    } as any);
+    vi.mocked(db.select).mockReturnValueOnce({
+      from: vi.fn().mockReturnThis(),
+      leftJoin: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue([]),
+    } as any);
+    vi.mocked(db.update).mockReturnValue({
+      set: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue([]),
+    } as any);
+
+    await runScrape(mockAdapter);
+
+    expect(db.insert).toHaveBeenCalledWith(schema.sources);
   });
 
   it("should handle tracked cases and send update notifications if changes are detected", async () => {
@@ -223,8 +258,56 @@ describe("engine - runScrape", () => {
     expect(result.newCases).toBe(0);
 
     expect(db.update).toHaveBeenCalledWith(schema.scrapeRuns);
-    // Check if status was set to failed in one of the update calls
-    const updateCalls = vi.mocked(db.update).mock.results;
     expect(mockAdapter.cleanup).toHaveBeenCalled();
+  });
+
+  it("should retry listing on failure", async () => {
+    const mockSourceSelect = {
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue([{ id: 1, adapterKey: "test-adapter" }]),
+    };
+    vi.mocked(db.select).mockReturnValueOnce(mockSourceSelect as any);
+    vi.mocked(db.insert).mockReturnValueOnce({
+        values: vi.fn().mockReturnThis(),
+        returning: vi.fn().mockResolvedValue([{ id: 10 }]),
+    } as any);
+
+    const mockCasesSelect = {
+        from: vi.fn().mockReturnThis(),
+        leftJoin: vi.fn().mockReturnThis(),
+        where: vi.fn().mockResolvedValue([]),
+      };
+    vi.mocked(db.select).mockReturnValueOnce(mockCasesSelect as any);
+
+    vi.mocked(db.update).mockReturnValue({
+        set: vi.fn().mockReturnThis(),
+        where: vi.fn().mockResolvedValue([]),
+    } as any);
+
+    mockAdapter.listCases = vi.fn()
+      .mockRejectedValueOnce(new Error("Network fail"))
+      .mockResolvedValueOnce([]);
+
+    await runScrape(mockAdapter);
+
+    expect(mockAdapter.listCases).toHaveBeenCalledTimes(2);
+    expect(mockAdapter.cleanup).toHaveBeenCalled();
+  });
+
+  it("should retry case detail on failure", async () => {
+    setupBaseMocks();
+
+    mockAdapter.getCaseDetail = vi.fn()
+      .mockRejectedValueOnce(new Error("Detail fail"))
+      .mockResolvedValue({
+        detail: { title: "Success" },
+        statusCode: 200,
+        duration: 100,
+      });
+
+    const result = await runScrape(mockAdapter);
+
+    expect(result.newCases).toBe(2);
+    expect(mockAdapter.getCaseDetail).toHaveBeenCalledTimes(3); // case1-fail, case1-retry, case2
   });
 });

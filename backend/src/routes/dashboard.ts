@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, count, desc, sql } from "drizzle-orm";
+import { count, desc } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 import { triggerManualScrape } from "../scraper/scheduler.js";
 
